@@ -1,0 +1,20 @@
+src/
+ ├── game/
+ │    ├── GameLoop.ts
+ │    ├── Entity.ts
+ │    ├── Hero.ts
+ │    ├── Enemy.ts
+ │    ├── Ability.ts
+ │    ├── Projectile.ts
+ │    └── AI.ts
+ │
+ ├── rendering/
+ │    ├── Map.tsx
+ │    ├── HeroSprite.tsx
+ │    └── Effects.tsx
+ │
+ ├── state/
+ │    └── store.ts
+ │
+ └── screens/
+      └── GameScreen.tsx
