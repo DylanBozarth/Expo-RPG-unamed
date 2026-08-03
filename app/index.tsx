@@ -1,34 +1,28 @@
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Colors, GlobalStyles } from '../styling/theme';
 
 export default function HomeScreen() {
+  const router = useRouter();
+
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.titleContainer}>
-        <Text style={styles.white}>Hello World</Text>
+      <SafeAreaView style={styles.container}>
+        <Text style={GlobalStyles.text}>Hello World</Text>
+        <TouchableOpacity style={GlobalStyles.button} onPress={() => router.push('/pages/map')}>
+          <Text style={GlobalStyles.buttonText}>Go to Map</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  white: {
-    color: "white"
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  container: {
+    ...GlobalStyles.background,
+    backgroundColor: Colors.prussianBlue,
+    padding: 24,
+    gap: 16,
   },
 });

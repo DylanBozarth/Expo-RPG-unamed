@@ -1,41 +1,71 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
-import { Platform } from 'react-native';
-
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+import { Platform, StyleSheet } from 'react-native';
 
 export const Colors = {
-  light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
-  },
-  dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
-  },
+  black: '#000000',
+  prussianBlue: '#14213d',
+  orange: '#fca311',
+  alabaster: '#e5e5e5',
+  white: '#ffffff',
 };
+
+export const GlobalStyles = StyleSheet.create({
+  background: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+  text: {
+    color: Colors.white,
+  },
+  card: {
+    backgroundColor: Colors.prussianBlue,
+    borderRadius: 8,
+    padding: 16,
+  },
+  outline: {
+    borderWidth: 1,
+    borderColor: Colors.prussianBlue,
+    borderRadius: 8,
+  },
+  accentText: {
+    color: Colors.orange,
+  },
+  mutedText: {
+    color: Colors.alabaster,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.alabaster,
+  },
+  button: {
+    backgroundColor: Colors.orange,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: Colors.white,
+    fontWeight: '600',
+  },
+  buttonOutline: {
+    borderWidth: 1,
+    borderColor: Colors.orange,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  buttonOutlineText: {
+    color: Colors.orange,
+    fontWeight: '600',
+  },
+});
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {

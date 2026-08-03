@@ -1,32 +1,18 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { Colors, GlobalStyles } from '../../styling/theme';
 
-export default function HomeScreen() {
+export default function MapScreen() {
   return (
-    <View>
-        <Text>I'm THE MAP </Text>
-
+    <View style={styles.container}>
+      <Text style={GlobalStyles.text}>Map</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  white: {
-    color: "white"
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  container: {
+    ...GlobalStyles.background,
+    backgroundColor: Colors.prussianBlue,
+    padding: 24,
   },
 });
