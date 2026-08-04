@@ -53,6 +53,8 @@ export function useMovement(width: number, height: number, playerRadius: number)
 
   // Left joystick — movement
   const moveGesture = Gesture.Pan()
+    .minPointers(1)
+    .maxPointers(1)
     .onUpdate((e) => {
       'worklet';
       const dist    = Math.sqrt(e.translationX ** 2 + e.translationY ** 2);
@@ -75,6 +77,8 @@ export function useMovement(width: number, height: number, playerRadius: number)
 
   // Right joystick — aim (angle persists on release)
   const aimGesture = Gesture.Pan()
+    .minPointers(1)
+    .maxPointers(1)
     .onUpdate((e) => {
       'worklet';
       const dist = Math.sqrt(e.translationX ** 2 + e.translationY ** 2);
@@ -93,6 +97,10 @@ export function useMovement(width: number, height: number, playerRadius: number)
       aimKnobOffY.value = withSpring(0, { damping: 15 });
       // aimAngle intentionally kept — gun holds last direction
     });
+
+  // Allow both joysticks to track separate fingers simultaneously
+  moveGesture.simultaneousWithExternalGesture(aimGesture);
+  aimGesture.simultaneousWithExternalGesture(moveGesture);
 
   const moveKnobStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: moveKnobOffX.value }, { translateY: moveKnobOffY.value }],
