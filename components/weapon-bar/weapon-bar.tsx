@@ -1,7 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors } from '../../styling/theme';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useWeaponStore, WeaponId } from '../../store/weapon-store';
+import { Colors } from '../../styling/theme';
 
 interface Weapon {
   id:    WeaponId;
@@ -10,8 +10,8 @@ interface Weapon {
 }
 
 const WEAPONS: Weapon[] = [
-  { id: 'plasma',  label: 'Plasma',  icon: 'lightning-bolt'   },
-  { id: 'laser',   label: 'Laser',   icon: 'laser-pointer'    },
+  { id: 'plasma',  label: 'Rifle',  icon: 'ammunition'   },
+  { id: 'laser',   label: 'Shotgun',   icon: 'laser-pointer'    },
   { id: 'grenade', label: 'Grenade', icon: 'bomb'             },
   { id: 'shield',  label: 'Shield',  icon: 'shield-half-full' },
 ];
