@@ -1,6 +1,6 @@
 import { Canvas, Circle, Group, Path, Rect, Skia } from "@shopify/react-native-skia";
 import { useCallback, useMemo, type ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import {
   runOnJS,
@@ -160,6 +160,55 @@ export function SceneCanvas({
     </Canvas>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Buttons of opportunity — bottom-right, context-dependent actions
+// ---------------------------------------------------------------------------
+
+/**
+ * Slot for actions that are only available in the moment: disembark, sleep,
+ * and whatever comes next. Bottom-right, mirroring the joystick's inset on the
+ * left. Render it inside SceneControls so it sits above the gesture layer.
+ */
+export function ActionBar({ children }: { children?: ReactNode }) {
+  return <View style={actionStyles.bar}>{children}</View>;
+}
+
+export function ActionButton({
+  label,
+  onPress,
+}: {
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={actionStyles.button} onPress={onPress}>
+      <Text style={actionStyles.label}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const actionStyles = StyleSheet.create({
+  bar: {
+    position: "absolute",
+    right: 32,
+    bottom: 48,
+    alignItems: "flex-end",
+    gap: 10,
+  },
+  button: {
+    backgroundColor: Colors.orange,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 26,
+  },
+  label: {
+    color: Colors.black,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+  },
+});
 
 // ---------------------------------------------------------------------------
 // SceneControls — joystick, vitals, inventory. Identical on every map.

@@ -1,22 +1,18 @@
 import { Rect } from "@shopify/react-native-skia";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { runOnJS, useAnimatedReaction } from "react-native-reanimated";
 import { buildTerrainRuns, generateRoom, TILE } from "../../components/map/terrain";
 import { useMovement } from "../../components/movement/movement";
 import {
-  Door,
-  isTapOnDoor,
-  useDoorProximity,
-} from "../../components/scene/door";
+  Interactable,
+  isTapOn,
+  useNearby,
+} from "../../components/scene/interactable";
 import {
+  ActionBar,
+  ActionButton,
   PLAYER_RADIUS,
   SceneCanvas,
   SceneControls,
@@ -87,7 +83,7 @@ export default function HouseScreen() {
     worldHeight: ROOM_H,
   });
 
-  const nearExit = useDoorProximity(playerX, playerY, EXIT_DOOR);
+  const nearExit = useNearby(playerX, playerY, EXIT_DOOR);
 
   // Tap arrives in canvas coords; shift by the camera to get world coords
   const handleTap = useCallback(
@@ -95,7 +91,7 @@ export default function HouseScreen() {
       if (!nearExit) return;
       const worldX = x + camera.camX.value;
       const worldY = y + camera.camY.value;
-      if (isTapOnDoor(worldX, worldY, EXIT_DOOR)) router.back();
+      if (isTapOn(worldX, worldY, EXIT_DOOR)) router.back();
     },
     [nearExit, camera, router]
   );
@@ -135,15 +131,13 @@ export default function HouseScreen() {
         />
 
         {/* Prompt above the door — below it is outside the room */}
-        <Door door={EXIT_DOOR} active={nearExit} promptSide="above" />
+        <Interactable rect={EXIT_DOOR} active={nearExit} promptSide="above" />
       </SceneCanvas>
 
       <SceneControls movement={movement} onTap={handleTap}>
-        {nearBed && (
-          <Pressable style={styles.sleepButton} onPress={sleep}>
-            <Text style={styles.sleepText}>SLEEP</Text>
-          </Pressable>
-        )}
+        <ActionBar>
+          {nearBed && <ActionButton label="SLEEP" onPress={sleep} />}
+        </ActionBar>
       </SceneControls>
     </View>
   );
@@ -153,20 +147,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#050508",
-  },
-  sleepButton: {
-    position: "absolute",
-    bottom: 140,
-    alignSelf: "center",
-    backgroundColor: Colors.orange,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-  },
-  sleepText: {
-    color: Colors.black,
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 2,
   },
 });

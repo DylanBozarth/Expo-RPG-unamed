@@ -20,6 +20,11 @@ export const temperature = makeMutable(0);
 /** Latched when stamina bottoms out, cleared via RECOVER_THRESHOLD. */
 export const exhausted = makeMutable(false);
 
+/** Drinking straight from a river fills the water bar right up. */
+export function drink() {
+  thirst.value = MAX_VITAL;
+}
+
 /**
  * A night's rest: stamina back to full, paid for with half the food and water
  * on hand. Clears the exhausted latch too, otherwise the bar would read full

@@ -1,13 +1,15 @@
 import { useMemo } from "react";
 import { StyleSheet, View, type ViewStyle } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
+import type { AnimatedStyle, SharedValue } from "react-native-reanimated";
 import Animated, {
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import type { AnimatedStyle } from "react-native-reanimated";
+import { Colors } from "../../styling/theme";
+import { isSolidAt, type SolidGrid } from "../map/terrain";
 import {
   EXHAUSTED_SPEED,
   HUNGER_DRAIN,
@@ -24,9 +26,8 @@ import {
   temperature,
   thirst,
 } from "../vitals/vitals-state";
-import { Colors } from "../../styling/theme";
 
-const PLAYER_SPEED = 3.2;
+const PLAYER_SPEED = 1.4;
 const JOYSTICK_BASE_RADIUS = 52;
 const JOYSTICK_KNOB_RADIUS = 22;
 
@@ -72,6 +73,12 @@ export interface MovementOptions {
   startY: number;
   /** Solid boxes the player is kept out of. Must be referentially stable. */
   obstacles?: Obstacle[];
+  /** Solid terrain mask (rivers). Must be referentially stable. */
+  solid?: SolidGrid;
+  /** Swapped in for `solid` while `useAltSolid` is true — e.g. boating, where
+   * water becomes passable and land becomes the barrier. */
+  altSolid?: SolidGrid;
+  useAltSolid?: SharedValue<boolean>;
 }
 
 export type MovementApi = ReturnType<typeof useMovement>;
@@ -84,6 +91,9 @@ export function useMovement({
   startX,
   startY,
   obstacles = NO_OBSTACLES,
+  solid,
+  altSolid,
+  useAltSolid,
 }: MovementOptions) {
   const playerX = useSharedValue(startX);
   const playerY = useSharedValue(startY);
@@ -149,18 +159,24 @@ export function useMovement({
 
     // Resolve each axis on its own, so walking diagonally into a wall slides
     // along it instead of stopping dead.
-    for (let i = 0; i < obstacles.length; i++) {
-      if (hitsObstacle(nx, py, playerRadius, obstacles[i])) {
-        nx = px;
-        break;
-      }
+    // Boating swaps the terrain mask outright rather than disabling it: water
+    // opens up and land closes off. The house and world edges apply either way.
+    const mask =
+      useAltSolid !== undefined && useAltSolid.value && altSolid !== undefined
+        ? altSolid
+        : solid;
+
+    let blockedX = mask !== undefined && isSolidAt(mask, nx, py, playerRadius);
+    for (let i = 0; !blockedX && i < obstacles.length; i++) {
+      if (hitsObstacle(nx, py, playerRadius, obstacles[i])) blockedX = true;
     }
-    for (let i = 0; i < obstacles.length; i++) {
-      if (hitsObstacle(nx, ny, playerRadius, obstacles[i])) {
-        ny = py;
-        break;
-      }
+    if (blockedX) nx = px;
+
+    let blockedY = mask !== undefined && isSolidAt(mask, nx, ny, playerRadius);
+    for (let i = 0; !blockedY && i < obstacles.length; i++) {
+      if (hitsObstacle(nx, ny, playerRadius, obstacles[i])) blockedY = true;
     }
+    if (blockedY) ny = py;
 
     playerX.value = nx;
     playerY.value = ny;
