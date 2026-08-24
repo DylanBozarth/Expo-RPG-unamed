@@ -1,12 +1,5 @@
-import {
-  Canvas,
-  Circle,
-  Group,
-  Path,
-  Rect,
-  Skia,
-} from "@shopify/react-native-skia";
-import { useMemo, useState } from "react";
+import { Canvas, Circle, Group, Path, Rect, Skia } from "@shopify/react-native-skia";
+import { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -21,7 +14,6 @@ import {
   useDerivedValue,
   useFrameCallback,
   useSharedValue,
-  withTiming,
 } from "react-native-reanimated";
 import {
   buildTerrainRuns,
@@ -37,43 +29,17 @@ import {
   type TerrainId,
   type TerrainRun,
 } from "../../components/map/terrain";
-import {
-  AimArrow,
-  Joystick,
-  useMovement,
-} from "../../components/movement/movement";
+import { Inventory } from "../../components/inventory/inventory";
+import { Joystick, useMovement } from "../../components/movement/movement";
+import { MAX_VITAL, VitalsHud } from "../../components/vitals/vitals";
+import type { ItemUse } from "../../store/inventory-store";
 import { Colors } from "../../styling/theme";
 
 const PLAYER_RADIUS = 18;
 const ENEMY_RADIUS = 14;
-const PROJ_RADIUS = 6;
-const PROJ_SPEED = 14;
-const PROJ_LIFE = 55; // frames — caps range so shots don't fly the whole world
-const MAX_PROJ = 16;
 
-const ENEMY_COUNT = 40;
+const ENEMY_COUNT = 0;
 const ENEMY_MIN_SPAWN_TILES = 8;
-
-// Struct-of-arrays so worklets can mutate in place then trigger a single assignment
-interface ProjPool {
-  x: number[];
-  y: number[];
-  vx: number[];
-  vy: number[];
-  life: number[];
-  alive: boolean[];
-}
-
-function makeProjPool(): ProjPool {
-  return {
-    x: new Array(MAX_PROJ).fill(0),
-    y: new Array(MAX_PROJ).fill(0),
-    vx: new Array(MAX_PROJ).fill(0),
-    vy: new Array(MAX_PROJ).fill(0),
-    life: new Array(MAX_PROJ).fill(0),
-    alive: new Array(MAX_PROJ).fill(false),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // World — regenerated per game, all coordinates in world px
@@ -167,11 +133,12 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
   const {
     playerX,
     playerY,
-    aimAngle,
-    fireCount,
-    combinedGesture,
+    stamina,
+    hunger,
+    thirst,
+    temperature,
+    moveGesture,
     moveKnobStyle,
-    aimKnobStyle,
   } = useMovement({
     screenWidth: width,
     worldWidth: WORLD_W,
@@ -181,10 +148,17 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
     startY: spawnY,
   });
 
-  const muzzleFlash = useSharedValue(0);
   const gameOver = useSharedValue(false);
-  const projPool = useSharedValue<ProjPool>(makeProjPool());
-  const enemyAlive = useSharedValue<boolean[]>(enemies.map(() => true));
+
+  // Consuming an item tops up the matching bar. Safe to write a shared value
+  // from the JS thread — Reanimated forwards it to the UI thread.
+  const handleConsume = useCallback(
+    (use: ItemUse) => {
+      const bar = use.vital === "hunger" ? hunger : thirst;
+      bar.value = Math.min(MAX_VITAL, bar.value + use.amount);
+    },
+    [hunger, thirst]
+  );
 
   // ---------------------------------------------------------------------------
   // Camera — centre on the player, clamped to the world edges
@@ -199,62 +173,13 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
   });
 
   // ---------------------------------------------------------------------------
-  // Game loop — projectile physics + all collision
+  // Game loop — player vs enemy collision
   // ---------------------------------------------------------------------------
   useFrameCallback(() => {
     "worklet";
     if (gameOver.value) return;
 
-    const pool = projPool.value;
-    const alive = enemyAlive.value;
-    let projDirty = false;
-    let enemyDirty = false;
-
-    // Move projectiles + collision vs enemies
-    for (let i = 0; i < MAX_PROJ; i++) {
-      if (!pool.alive[i]) continue;
-
-      const nx = pool.x[i] + pool.vx[i];
-      const ny = pool.y[i] + pool.vy[i];
-
-      // Out of world or out of range — retire
-      pool.life[i] -= 1;
-      if (
-        pool.life[i] <= 0 ||
-        nx < 0 ||
-        nx > WORLD_W ||
-        ny < 0 ||
-        ny > WORLD_H
-      ) {
-        pool.alive[i] = false;
-        projDirty = true;
-        continue;
-      }
-
-      pool.x[i] = nx;
-      pool.y[i] = ny;
-      projDirty = true;
-
-      // Check vs each live enemy
-      for (let j = 0; j < enemies.length; j++) {
-        if (!alive[j]) continue;
-        const dx = nx - enemies[j].x;
-        const dy = ny - enemies[j].y;
-        if (dx * dx + dy * dy < (PROJ_RADIUS + ENEMY_RADIUS) ** 2) {
-          pool.alive[i] = false;
-          alive[j] = false;
-          enemyDirty = true;
-          break;
-        }
-      }
-    }
-
-    if (projDirty) projPool.value = { ...pool };
-    if (enemyDirty) enemyAlive.value = [...alive];
-
-    // Player vs live enemy — game over
     for (let i = 0; i < enemies.length; i++) {
-      if (!alive[i]) continue;
       const dx = playerX.value - enemies[i].x;
       const dy = playerY.value - enemies[i].y;
       if (dx * dx + dy * dy < (PLAYER_RADIUS + ENEMY_RADIUS) ** 2) {
@@ -272,51 +197,14 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
     }
   );
 
-  // Spawn projectile + muzzle flash on each fire tap
-  useAnimatedReaction(
-    () => fireCount.value,
-    (count, prev) => {
-      if (count === prev || gameOver.value) return;
-
-      muzzleFlash.value = 1;
-      muzzleFlash.value = withTiming(0, { duration: 120 });
-
-      const pool = projPool.value;
-      for (let i = 0; i < MAX_PROJ; i++) {
-        if (pool.alive[i]) continue;
-        const angle = aimAngle.value;
-        pool.x[i] = playerX.value;
-        pool.y[i] = playerY.value;
-        pool.vx[i] = Math.cos(angle) * PROJ_SPEED;
-        pool.vy[i] = Math.sin(angle) * PROJ_SPEED;
-        pool.life[i] = PROJ_LIFE;
-        pool.alive[i] = true;
-        projPool.value = { ...pool };
-        break;
-      }
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // Reactive Skia paths — built on UI thread, read by Canvas directly
-  // ---------------------------------------------------------------------------
-  const enemyPath = useDerivedValue(() => {
+  // Enemies are static now that nothing can kill them — build the path once
+  const enemyPath = useMemo(() => {
     const path = Skia.Path.Make();
-    const alive = enemyAlive.value;
-    for (let i = 0; i < enemies.length; i++) {
-      if (alive[i]) path.addCircle(enemies[i].x, enemies[i].y, ENEMY_RADIUS);
+    for (const enemy of enemies) {
+      path.addCircle(enemy.x, enemy.y, ENEMY_RADIUS);
     }
     return path;
-  });
-
-  const projPath = useDerivedValue(() => {
-    const path = Skia.Path.Make();
-    const pool = projPool.value;
-    for (let i = 0; i < MAX_PROJ; i++) {
-      if (pool.alive[i]) path.addCircle(pool.x[i], pool.y[i], PROJ_RADIUS);
-    }
-    return path;
-  });
+  }, [enemies]);
 
   // ---------------------------------------------------------------------------
   // Render — everything world-space lives inside the camera Group
@@ -336,15 +224,7 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
           <TerrainLayer runs={runs} />
 
           <Path path={enemyPath} color="#e63946" />
-          <Path path={projPath} color="#4cc9f0" />
 
-          <AimArrow
-            playerX={playerX}
-            playerY={playerY}
-            aimAngle={aimAngle}
-            playerRadius={PLAYER_RADIUS}
-            muzzleFlash={muzzleFlash}
-          />
           <Circle
             cx={playerX}
             cy={playerY}
@@ -354,12 +234,22 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
         </Group>
       </Canvas>
 
-      <GestureDetector gesture={combinedGesture}>
+      <GestureDetector gesture={moveGesture}>
         <View style={StyleSheet.absoluteFill} pointerEvents="box-only">
-          <Joystick side="left" knobStyle={moveKnobStyle} />
-          <Joystick side="right" knobStyle={aimKnobStyle} />
+          <Joystick knobStyle={moveKnobStyle} />
         </View>
       </GestureDetector>
+
+      <VitalsHud
+        stamina={stamina}
+        hunger={hunger}
+        thirst={thirst}
+        temperature={temperature}
+      />
+
+      {/* After the GestureDetector so it sits on top and wins hit-testing —
+          the joystick's absoluteFill would otherwise swallow these taps. */}
+      <Inventory onConsume={handleConsume} />
     </>
   );
 }
