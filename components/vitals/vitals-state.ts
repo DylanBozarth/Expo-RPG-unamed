@@ -25,6 +25,11 @@ export function drink() {
   thirst.value = MAX_VITAL;
 }
 
+/** Eating tops the food bar up by `amount`, capped at full. */
+export function eat(amount: number) {
+  hunger.value = Math.min(MAX_VITAL, hunger.value + amount);
+}
+
 /**
  * A night's rest: stamina back to full, paid for with half the food and water
  * on hand. Clears the exhausted latch too, otherwise the bar would read full

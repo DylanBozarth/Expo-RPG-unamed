@@ -1,4 +1,12 @@
-import { matchFont, Path, Rect, Skia, Text as SkiaText } from "@shopify/react-native-skia";
+import {
+  Circle,
+  matchFont,
+  Oval,
+  Path,
+  Rect,
+  Skia,
+  Text as SkiaText,
+} from "@shopify/react-native-skia";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -16,35 +24,27 @@ import {
   useSharedValue,
 } from "react-native-reanimated";
 import {
-  buildBoatSolidGrid,
-  buildShoreMask,
-  buildSolidGrid,
-  buildTerrainRuns,
-  buildWaterAccessMask,
-  ensureLandRoute,
-  findSpawn,
   nearestWalkableTile,
   nearestWaterTile,
-  generateGrid,
-  HOUSE_COLS,
-  HOUSE_ROWS,
-  pickEnemyCells,
-  placeBoat,
-  placeHouse,
   TILE,
   WORLD_H,
   WORLD_W,
-  type SolidGrid,
-  type TerrainId,
-  type TerrainRun,
 } from "../../components/map/terrain";
+import {
+  BOAT_HEIGHT,
+  BOAT_WIDTH,
+  getWorld,
+  type World,
+} from "../../components/map/world";
 import { useMovement } from "../../components/movement/movement";
 import {
   Interactable,
   isTapOn,
   useNearby,
 } from "../../components/scene/interactable";
-import { drink, resetVitals } from "../../components/vitals/vitals-state";
+import { DialogBox } from "../../components/scene/dialog";
+import { drink, eat, resetVitals } from "../../components/vitals/vitals-state";
+import { MAX_VITAL } from "../../components/vitals/vitals";
 import {
   ActionBar,
   ActionButton,
@@ -57,117 +57,21 @@ import { Colors } from "../../styling/theme";
 
 const ENEMY_RADIUS = 14;
 
-const ENEMY_COUNT = 0;
-const ENEMY_MIN_SPAWN_TILES = 8;
-
 const DOOR_WIDTH = TILE * 0.6;
 const DOOR_HEIGHT = TILE * 0.35;
 
-const BOAT_WIDTH = TILE * 0.95;
-const BOAT_HEIGHT = TILE * 0.55;
 const BOAT_COLOR = "#d9a066";
+
+const FISH_COLOR = "#cfd8dc";
+/** One fish is half a meal. */
+const FISH_NUTRITION = MAX_VITAL / 2;
+
+const NPC_RADIUS = 15;
+const NPC_NAME = "NPC";
+const NPC_LINE = "Hello.";
 
 const HOUSE_LABEL = "HOUSE";
 const houseFont = matchFont({ fontSize: 22, fontWeight: "700" });
-
-// ---------------------------------------------------------------------------
-// World — regenerated per game, all coordinates in world px
-// ---------------------------------------------------------------------------
-
-interface Enemy {
-  x: number;
-  y: number;
-}
-
-/** House geometry in world px, resolved once at generation time. */
-interface House {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  doorX: number;
-  doorY: number;
-}
-
-interface World {
-  grid: TerrainId[][];
-  runs: TerrainRun[];
-  spawnX: number;
-  spawnY: number;
-  enemies: Enemy[];
-  house: House;
-  /** Beached by the nearest shoreline to the house. */
-  boat: { x: number; y: number; width: number; height: number };
-  /** Rivers block walking. Built last, after the grid stops changing. */
-  solid: SolidGrid;
-  /** Inverse mask: while boating, dry land blocks instead. */
-  boatSolid: SolidGrid;
-  /** Water tiles touching land — where a boat may be left. */
-  shore: SolidGrid;
-  /** Tiles within reach of water — where the player can drink. */
-  waterAccess: SolidGrid;
-}
-
-function generateWorld(seed: number): World {
-  const grid = generateGrid(seed);
-  const spawn = findSpawn(grid); // clears a pad, so run it before building runs
-  const house = placeHouse(grid, spawn); // also flattens its footprint
-
-  // Rivers are solid, so guarantee a dry route from spawn to the door before
-  // freezing the collision mask — otherwise a channel can seal the house off.
-  ensureLandRoute(grid, spawn, {
-    col: house.doorCol,
-    row: house.doorRow + 1,
-  });
-
-  const boatCell = placeBoat(grid, {
-    col: house.doorCol,
-    row: house.doorRow + 1,
-  });
-
-  // Must come after findSpawn/placeHouse/ensureLandRoute — all edit the grid
-  const solid = buildSolidGrid(grid);
-  const boatSolid = buildBoatSolidGrid(grid);
-  const shore = buildShoreMask(grid);
-  const waterAccess = buildWaterAccessMask(grid);
-  const cells = pickEnemyCells(
-    grid,
-    seed,
-    ENEMY_COUNT,
-    spawn,
-    ENEMY_MIN_SPAWN_TILES
-  );
-
-  return {
-    grid,
-    solid,
-    boatSolid,
-    shore,
-    waterAccess,
-    runs: buildTerrainRuns(grid),
-    spawnX: (spawn.col + 0.5) * TILE,
-    spawnY: (spawn.row + 0.5) * TILE,
-    enemies: cells.map(({ col, row }) => ({
-      x: (col + 0.5) * TILE,
-      y: (row + 0.5) * TILE,
-    })),
-    boat: {
-      x: (boatCell.col + 0.5) * TILE - BOAT_WIDTH / 2,
-      y: (boatCell.row + 0.5) * TILE - BOAT_HEIGHT / 2,
-      width: BOAT_WIDTH,
-      height: BOAT_HEIGHT,
-    },
-    house: {
-      x: house.col * TILE,
-      y: house.row * TILE,
-      width: HOUSE_COLS * TILE,
-      height: HOUSE_ROWS * TILE,
-      // Doorway sits on the bottom wall, centred on its tile
-      doorX: (house.doorCol + 0.5) * TILE,
-      doorY: (house.doorRow + 1) * TILE,
-    },
-  };
-}
 
 // ---------------------------------------------------------------------------
 // GameContent — remounted on restart via key prop
@@ -181,7 +85,8 @@ interface GameContentProps {
 }
 
 function GameContent({ width, height, world, onGameOver }: GameContentProps) {
-  const { enemies, runs, spawnX, spawnY, house, solid, boat } = world;
+  const { enemies, runs, spawnX, spawnY, house, solid, boat, npc, fish } =
+    world;
   const { grid, boatSolid, shore, waterAccess } = world;
   const router = useRouter();
 
@@ -193,6 +98,12 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
       height: DOOR_HEIGHT,
     }),
     [house]
+  );
+
+  // The NPC is solid. A circle, not the square its sprite bounds would give.
+  const circleObstacles = useMemo(
+    () => [{ x: npc.x, y: npc.y, radius: NPC_RADIUS }],
+    [npc]
   );
 
   // The house is solid. Memoised because the frame callback closes over it.
@@ -207,6 +118,31 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
     ],
     [house]
   );
+
+  const npcRect = useMemo(
+    () => ({
+      x: npc.x - NPC_RADIUS,
+      y: npc.y - NPC_RADIUS,
+      width: NPC_RADIUS * 2,
+      height: NPC_RADIUS * 2,
+    }),
+    [npc]
+  );
+
+  // Talking freezes the player. Mirrored as a shared value for the movement
+  // worklet and as React state for the dialog box.
+  const [talking, setTalking] = useState(false);
+  const lockedFlag = useSharedValue(false);
+
+  const startTalking = useCallback(() => {
+    setTalking(true);
+    lockedFlag.value = true;
+  }, [lockedFlag]);
+
+  const stopTalking = useCallback(() => {
+    setTalking(false);
+    lockedFlag.value = false;
+  }, [lockedFlag]);
 
   // Aboard the boat, water stops blocking. Mirrored as a shared value because
   // the collision check runs in the movement worklet, and as React state
@@ -226,9 +162,11 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
     startX: spawnX,
     startY: spawnY,
     obstacles,
+    circleObstacles,
     solid,
     altSolid: boatSolid,
     useAltSolid: boardedFlag,
+    locked: lockedFlag,
   });
   const { playerX, playerY } = movement;
 
@@ -245,6 +183,15 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
 
   const nearDoor = useNearby(playerX, playerY, doorRect);
   const nearBoat = useNearby(playerX, playerY, mooring);
+  const nearNpc = useNearby(playerX, playerY, npcRect);
+
+  const [fishEaten, setFishEaten] = useState(false);
+  const nearFish = useNearby(playerX, playerY, fish);
+
+  const eatFish = useCallback(() => {
+    eat(FISH_NUTRITION);
+    setFishEaten(true);
+  }, []);
 
   // While aboard, the boat rides with the player
   const boatX = useDerivedValue(() => playerX.value - BOAT_WIDTH / 2);
@@ -315,6 +262,8 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
   // Everything is gated on proximity, so distant taps do nothing.
   const handleTap = useCallback(
     (x: number, y: number) => {
+      if (talking) return; // conversation owns the input
+
       const worldX = x + camera.camX.value;
       const worldY = y + camera.camY.value;
 
@@ -344,6 +293,7 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
       }
     },
     [
+      talking,
       boarded,
       boardedFlag,
       nearDoor,
@@ -464,17 +414,41 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
           />
         )}
 
+        {!fishEaten && (
+          <Oval
+            x={fish.x}
+            y={fish.y}
+            width={fish.width}
+            height={fish.height}
+            color={FISH_COLOR}
+          />
+        )}
+
+        <Circle cx={npc.x} cy={npc.y} r={NPC_RADIUS} color={Colors.white} />
+
         <Path path={enemyPath} color="#e63946" />
       </SceneCanvas>
 
       <SceneControls movement={movement} onTap={handleTap}>
-        <ActionBar>
-          {nearWater && <ActionButton label="DRINK" onPress={drink} />}
-          {boarded && canLeaveBoat && (
-            <ActionButton label="DISEMBARK" onPress={disembark} />
-          )}
-        </ActionBar>
+        {!talking && (
+          <ActionBar>
+            {nearNpc && !boarded && (
+              <ActionButton label="SPEAK" onPress={startTalking} />
+            )}
+            {nearFish && !fishEaten && (
+              <ActionButton label="EAT" onPress={eatFish} />
+            )}
+            {nearWater && <ActionButton label="DRINK" onPress={drink} />}
+            {boarded && canLeaveBoat && (
+              <ActionButton label="DISEMBARK" onPress={disembark} />
+            )}
+          </ActionBar>
+        )}
       </SceneControls>
+
+      {talking && (
+        <DialogBox speaker={NPC_NAME} line={NPC_LINE} onClose={stopTalking} />
+      )}
     </>
   );
 }
@@ -502,11 +476,8 @@ export default function MapScreen() {
   const { width, height } = useWindowDimensions();
   const [gameKey, setGameKey] = useState(0);
   const [isGameOver, setIsGameOver] = useState(false);
-  const [seed, setSeed] = useState(() =>
-    Math.floor(Math.random() * 0xffffffff)
-  );
-
-  const world = useMemo(() => generateWorld(seed), [seed]);
+  // Generated once at module scope, so remounting this screen does not reroll it
+  const world = getWorld();
 
   function handleGameOver() {
     setIsGameOver(true);
@@ -517,7 +488,7 @@ export default function MapScreen() {
     // a new run has to say so explicitly.
     resetVitals();
     setIsGameOver(false);
-    setSeed(Math.floor(Math.random() * 0xffffffff));
+    // Same world — a restart resets the run, not the map
     setGameKey((k) => k + 1);
   }
 

@@ -554,6 +554,99 @@ export function nearestWalkableTile(
   return nearestTileWhere(grid, col, row, (t) => WALKABLE[t], maxTiles);
 }
 
+/**
+ * A walkable tile a short walk from `from` — used to stand things next to a
+ * landmark without putting them on top of it. Falls back to `from`.
+ */
+/**
+ * Ring search for a placement spot: inside the border, matching `wanted`, at
+ * least `minTiles` out, and clear of everything in `avoid`.
+ */
+function findNear(
+  grid: TerrainId[][],
+  from: { col: number; row: number },
+  wanted: (t: TerrainId) => boolean,
+  minTiles: number,
+  maxTiles: number,
+  avoid: { col: number; row: number }[],
+  avoidTiles: number
+): { col: number; row: number } {
+  const rows = grid.length;
+  const cols = grid[0].length;
+
+  for (let ring = minTiles; ring <= maxTiles; ring++) {
+    for (let dRow = -ring; dRow <= ring; dRow++) {
+      for (let dCol = -ring; dCol <= ring; dCol++) {
+        if (Math.max(Math.abs(dRow), Math.abs(dCol)) !== ring) continue;
+        const row = from.row + dRow;
+        const col = from.col + dCol;
+        if (row < BORDER || col < BORDER) continue;
+        if (row >= rows - BORDER || col >= cols - BORDER) continue;
+        if (!wanted(grid[row][col])) continue;
+
+        let clear = true;
+        for (let i = 0; i < avoid.length; i++) {
+          const dc = col - avoid[i].col;
+          const dr = row - avoid[i].row;
+          if (dc * dc + dr * dr < avoidTiles * avoidTiles) {
+            clear = false;
+            break;
+          }
+        }
+        if (clear) return { col, row };
+      }
+    }
+  }
+
+  return from;
+}
+
+/**
+ * A walkable tile a short walk from `from` — used to stand things next to a
+ * landmark without putting them on top of it.
+ *
+ * `avoid` keeps solid placements off cells like the spawn point, where anything
+ * solid would trap the player inside it from the first frame.
+ */
+export function findWalkableNear(
+  grid: TerrainId[][],
+  from: { col: number; row: number },
+  minTiles = 3,
+  maxTiles = 14,
+  avoid: { col: number; row: number }[] = [],
+  avoidTiles = 2
+): { col: number; row: number } {
+  return findNear(
+    grid,
+    from,
+    (t) => WALKABLE[t],
+    minTiles,
+    maxTiles,
+    avoid,
+    avoidTiles
+  );
+}
+
+/** The same, but for a spot out in the water. */
+export function findWaterNear(
+  grid: TerrainId[][],
+  from: { col: number; row: number },
+  minTiles = 2,
+  maxTiles = 24,
+  avoid: { col: number; row: number }[] = [],
+  avoidTiles = 2
+): { col: number; row: number } {
+  return findNear(
+    grid,
+    from,
+    (t) => t === T.LIQUID,
+    minTiles,
+    maxTiles,
+    avoid,
+    avoidTiles
+  );
+}
+
 /** Nearest walkable cell to the world centre, cleared of hazards. */
 export function findSpawn(grid: TerrainId[][]): { col: number; row: number } {
   const midCol = Math.floor(WORLD_COLS / 2);

@@ -39,8 +39,16 @@ export interface Obstacle {
   height: number;
 }
 
-// Stable identity, so passing no obstacles doesn't rebuild the frame callback
+/** A solid round thing — entities are circles, buildings are boxes. */
+export interface CircleObstacle {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+// Stable identities, so passing nothing doesn't rebuild the frame callback
 const NO_OBSTACLES: Obstacle[] = [];
+const NO_CIRCLES: CircleObstacle[] = [];
 
 /** Circle-vs-rect overlap: nearest point on the box, then a radius test. */
 function hitsObstacle(
@@ -55,6 +63,20 @@ function hitsObstacle(
   const dx = px - nearestX;
   const dy = py - nearestY;
   return dx * dx + dy * dy < radius * radius;
+}
+
+/** Circle vs circle — exact for round entities, unlike a bounding box. */
+function hitsCircle(
+  px: number,
+  py: number,
+  radius: number,
+  c: CircleObstacle
+): boolean {
+  "worklet";
+  const dx = px - c.x;
+  const dy = py - c.y;
+  const reach = radius + c.radius;
+  return dx * dx + dy * dy < reach * reach;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,12 +95,16 @@ export interface MovementOptions {
   startY: number;
   /** Solid boxes the player is kept out of. Must be referentially stable. */
   obstacles?: Obstacle[];
+  /** Solid round things — NPCs and the like. Must be referentially stable. */
+  circleObstacles?: CircleObstacle[];
   /** Solid terrain mask (rivers). Must be referentially stable. */
   solid?: SolidGrid;
   /** Swapped in for `solid` while `useAltSolid` is true — e.g. boating, where
    * water becomes passable and land becomes the barrier. */
   altSolid?: SolidGrid;
   useAltSolid?: SharedValue<boolean>;
+  /** While true the player is frozen and the joystick stops responding. */
+  locked?: SharedValue<boolean>;
 }
 
 export type MovementApi = ReturnType<typeof useMovement>;
@@ -91,9 +117,11 @@ export function useMovement({
   startX,
   startY,
   obstacles = NO_OBSTACLES,
+  circleObstacles = NO_CIRCLES,
   solid,
   altSolid,
   useAltSolid,
+  locked,
 }: MovementOptions) {
   const playerX = useSharedValue(startX);
   const playerY = useSharedValue(startY);
@@ -116,6 +144,14 @@ export function useMovement({
   // Game loop — runs every frame on the UI thread
   useFrameCallback(() => {
     "worklet";
+    // Frozen: drop any held input so vitals stop draining too, then bail before
+    // the position integration below.
+    if (locked !== undefined && locked.value) {
+      dirX.value = 0;
+      dirY.value = 0;
+      return;
+    }
+
     // dirX/dirY already carry the stick magnitude, so this is 0..1
     const effort = Math.sqrt(
       dirX.value * dirX.value + dirY.value * dirY.value
@@ -170,11 +206,17 @@ export function useMovement({
     for (let i = 0; !blockedX && i < obstacles.length; i++) {
       if (hitsObstacle(nx, py, playerRadius, obstacles[i])) blockedX = true;
     }
+    for (let i = 0; !blockedX && i < circleObstacles.length; i++) {
+      if (hitsCircle(nx, py, playerRadius, circleObstacles[i])) blockedX = true;
+    }
     if (blockedX) nx = px;
 
     let blockedY = mask !== undefined && isSolidAt(mask, nx, ny, playerRadius);
     for (let i = 0; !blockedY && i < obstacles.length; i++) {
       if (hitsObstacle(nx, ny, playerRadius, obstacles[i])) blockedY = true;
+    }
+    for (let i = 0; !blockedY && i < circleObstacles.length; i++) {
+      if (hitsCircle(nx, ny, playerRadius, circleObstacles[i])) blockedY = true;
     }
     if (blockedY) ny = py;
 
@@ -188,6 +230,7 @@ export function useMovement({
       Gesture.Manual()
         .onTouchesDown((e, mgr) => {
           "worklet";
+          if (locked !== undefined && locked.value) return;
           if (movePointerID.value !== -1) return;
           for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
