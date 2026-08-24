@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import Animated, {
     useAnimatedStyle,
@@ -9,11 +9,11 @@ import Animated, {
     withSpring,
     interpolateColor,
 } from 'react-native-reanimated';
-import type { SharedValue } from 'react-native-reanimated';
+import type { AnimatedStyle, SharedValue } from 'react-native-reanimated';
 import { Skia, Path, Group } from '@shopify/react-native-skia';
 import { Colors } from '../../styling/theme';
 
-const PLAYER_SPEED         = 0.5;
+const PLAYER_SPEED         = 3.2;
 const JOYSTICK_BASE_RADIUS = 52;
 const JOYSTICK_KNOB_RADIUS = 22;
 const ARROW_SHAFT          = 36;
@@ -26,9 +26,28 @@ const FIRE_TAP_THRESHOLD   = 12; // px — less movement than this on release = 
 // Hook — owns all movement + aim state and the game loop
 // ---------------------------------------------------------------------------
 
-export function useMovement(width: number, height: number, playerRadius: number) {
-  const playerX = useSharedValue(width  / 2);
-  const playerY = useSharedValue(height / 2);
+export interface MovementOptions {
+  /** Viewport width — only used to split the screen between the two joysticks. */
+  screenWidth:  number;
+  /** Playfield bounds in world px — the player is clamped to these. */
+  worldWidth:   number;
+  worldHeight:  number;
+  playerRadius: number;
+  /** Starting position in world px. */
+  startX:       number;
+  startY:       number;
+}
+
+export function useMovement({
+  screenWidth,
+  worldWidth,
+  worldHeight,
+  playerRadius,
+  startX,
+  startY,
+}: MovementOptions) {
+  const playerX = useSharedValue(startX);
+  const playerY = useSharedValue(startY);
   const dirX    = useSharedValue(0);
   const dirY    = useSharedValue(0);
   const aimAngle = useSharedValue(0);
@@ -49,15 +68,15 @@ export function useMovement(width: number, height: number, playerRadius: number)
   // Incremented each time a tap-to-fire is detected; callers react to changes
   const fireCount     = useSharedValue(0);
 
-  const halfWidth = width / 2;
+  const halfWidth = screenWidth / 2;
 
   // Game loop — runs every frame on the UI thread
   useFrameCallback(() => {
     'worklet';
     const nx = playerX.value + dirX.value * PLAYER_SPEED;
     const ny = playerY.value + dirY.value * PLAYER_SPEED;
-    playerX.value = Math.max(playerRadius, Math.min(width  - playerRadius, nx));
-    playerY.value = Math.max(playerRadius, Math.min(height - playerRadius, ny));
+    playerX.value = Math.max(playerRadius, Math.min(worldWidth  - playerRadius, nx));
+    playerY.value = Math.max(playerRadius, Math.min(worldHeight - playerRadius, ny));
   });
 
   // Manual gesture for left joystick — tracks whichever finger touched the left half
@@ -251,7 +270,10 @@ export function AimArrow({ playerX, playerY, aimAngle, playerRadius, muzzleFlash
 // ---------------------------------------------------------------------------
 
 interface JoystickProps {
-  knobStyle: ReturnType<typeof useAnimatedStyle>;
+  // Not `ReturnType<typeof useAnimatedStyle>` — with the generic unresolved that
+  // widens to ViewStyle & ImageStyle & TextStyle, whose loose `cursor: string`
+  // is rejected by Animated.View's style prop.
+  knobStyle: AnimatedStyle<ViewStyle>;
   side:      'left' | 'right';
 }
 
