@@ -177,9 +177,9 @@ export function VitalsHud({
 }: VitalsHudProps) {
   return (
     <View style={styles.container} pointerEvents="none">
-      <VitalBar label="STA" value={stamina} color={Colors.orange} />
-      <VitalBar label="FOOD" value={hunger} color="#8bc34a" />
-      <VitalBar label="H2O" value={thirst} color={COLD_COLOR} />
+      <VitalBar label="Stamina" value={stamina} color={Colors.orange} />
+      <VitalBar label="Hunger" value={hunger} color="#8bc34a" />
+      <VitalBar label="Thirst" value={thirst} color={COLD_COLOR} />
       <TemperatureBar value={temperature} />
     </View>
   );
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
   container: {
     position: "absolute",
     top: 44,
-    left: 20,
+    left: 25,
     gap: 6,
   },
   row: {
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    width: 38,
+    width: 45,
     color: Colors.alabaster,
     fontSize: 10,
     fontWeight: "700",

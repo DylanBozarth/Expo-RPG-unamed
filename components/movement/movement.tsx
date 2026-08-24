@@ -11,18 +11,50 @@ import type { AnimatedStyle } from "react-native-reanimated";
 import {
   EXHAUSTED_SPEED,
   HUNGER_DRAIN,
-  MAX_VITAL,
   RECOVER_THRESHOLD,
   RUN_THRESHOLD,
   RUN_UPKEEP_MULTIPLIER,
   STAMINA_RUN_DRAIN,
   THIRST_DRAIN,
 } from "../vitals/vitals";
+import {
+  exhausted,
+  hunger,
+  stamina,
+  temperature,
+  thirst,
+} from "../vitals/vitals-state";
 import { Colors } from "../../styling/theme";
 
 const PLAYER_SPEED = 3.2;
 const JOYSTICK_BASE_RADIUS = 52;
 const JOYSTICK_KNOB_RADIUS = 22;
+
+/** A solid, axis-aligned box in world px that the player can't walk into. */
+export interface Obstacle {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Stable identity, so passing no obstacles doesn't rebuild the frame callback
+const NO_OBSTACLES: Obstacle[] = [];
+
+/** Circle-vs-rect overlap: nearest point on the box, then a radius test. */
+function hitsObstacle(
+  px: number,
+  py: number,
+  radius: number,
+  o: Obstacle
+): boolean {
+  "worklet";
+  const nearestX = Math.max(o.x, Math.min(px, o.x + o.width));
+  const nearestY = Math.max(o.y, Math.min(py, o.y + o.height));
+  const dx = px - nearestX;
+  const dy = py - nearestY;
+  return dx * dx + dy * dy < radius * radius;
+}
 
 // ---------------------------------------------------------------------------
 // Hook — owns all movement state and the game loop
@@ -38,7 +70,11 @@ export interface MovementOptions {
   /** Starting position in world px. */
   startX: number;
   startY: number;
+  /** Solid boxes the player is kept out of. Must be referentially stable. */
+  obstacles?: Obstacle[];
 }
+
+export type MovementApi = ReturnType<typeof useMovement>;
 
 export function useMovement({
   screenWidth,
@@ -47,6 +83,7 @@ export function useMovement({
   playerRadius,
   startX,
   startY,
+  obstacles = NO_OBSTACLES,
 }: MovementOptions) {
   const playerX = useSharedValue(startX);
   const playerY = useSharedValue(startY);
@@ -56,14 +93,8 @@ export function useMovement({
   const moveKnobOffX = useSharedValue(0);
   const moveKnobOffY = useSharedValue(0);
 
-  // Vitals — stamina gates running, hunger/thirst are a slow one-way drain
-  const stamina = useSharedValue(MAX_VITAL);
-  const hunger = useSharedValue(MAX_VITAL);
-  const thirst = useSharedValue(MAX_VITAL);
-  const exhausted = useSharedValue(false);
-  // Bipolar: negative is cold, positive is hot, 0 is comfortable.
-  // Nothing drives this yet.
-  const temperature = useSharedValue(0);
+  // Vitals are player state, not scene state — they come from module scope so
+  // they carry across maps instead of resetting on every screen change.
 
   // Per-pointer tracking — the joystick owns one finger at a time
   const movePointerID = useSharedValue(-1);
@@ -104,10 +135,35 @@ export function useMovement({
     }
 
     const speed = PLAYER_SPEED * (exhausted.value ? EXHAUSTED_SPEED : 1);
-    const nx = playerX.value + dirX.value * speed;
-    const ny = playerY.value + dirY.value * speed;
-    playerX.value = Math.max(playerRadius, Math.min(worldWidth - playerRadius, nx));
-    playerY.value = Math.max(playerRadius, Math.min(worldHeight - playerRadius, ny));
+    const px = playerX.value;
+    const py = playerY.value;
+
+    let nx = Math.max(
+      playerRadius,
+      Math.min(worldWidth - playerRadius, px + dirX.value * speed)
+    );
+    let ny = Math.max(
+      playerRadius,
+      Math.min(worldHeight - playerRadius, py + dirY.value * speed)
+    );
+
+    // Resolve each axis on its own, so walking diagonally into a wall slides
+    // along it instead of stopping dead.
+    for (let i = 0; i < obstacles.length; i++) {
+      if (hitsObstacle(nx, py, playerRadius, obstacles[i])) {
+        nx = px;
+        break;
+      }
+    }
+    for (let i = 0; i < obstacles.length; i++) {
+      if (hitsObstacle(nx, ny, playerRadius, obstacles[i])) {
+        ny = py;
+        break;
+      }
+    }
+
+    playerX.value = nx;
+    playerY.value = ny;
   });
 
   // Manual gesture — tracks whichever finger touched the left half

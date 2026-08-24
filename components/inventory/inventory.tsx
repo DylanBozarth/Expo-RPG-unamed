@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   toggle: {
     position: "absolute",
     top: 40,
-    right: 20,
+    right: 40,
     backgroundColor: "rgba(20, 33, 61, 0.85)",
     borderWidth: 1.5,
     borderColor: Colors.orange,

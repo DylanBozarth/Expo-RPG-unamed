@@ -184,6 +184,60 @@ function stampBlobClear(grid: TerrainId[][], col: number, row: number) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// House
+// ---------------------------------------------------------------------------
+
+export const HOUSE_COLS = 5;
+export const HOUSE_ROWS = 3;
+
+export interface HousePlacement {
+  /** Top-left corner of the footprint, in tiles. */
+  col: number;
+  row: number;
+  /** Doorway tile, centred on the bottom wall. */
+  doorCol: number;
+  doorRow: number;
+}
+
+/**
+ * Drops the house a short walk from spawn and flattens its footprint (plus the
+ * tile in front of the door) to GROUND, so it never lands in rock or water.
+ */
+export function placeHouse(
+  grid: TerrainId[][],
+  spawn: { col: number; row: number }
+): HousePlacement {
+  const col = Math.max(
+    BORDER,
+    Math.min(WORLD_COLS - BORDER - HOUSE_COLS, spawn.col + 4)
+  );
+  const row = Math.max(
+    BORDER,
+    Math.min(WORLD_ROWS - BORDER - HOUSE_ROWS - 1, spawn.row - HOUSE_ROWS - 2)
+  );
+
+  for (let r = row; r < row + HOUSE_ROWS; r++) {
+    for (let c = col; c < col + HOUSE_COLS; c++) {
+      grid[r][c] = T.GROUND;
+    }
+  }
+
+  const doorCol = col + Math.floor(HOUSE_COLS / 2);
+  const doorRow = row + HOUSE_ROWS - 1;
+
+  // Keep the approach to the door walkable
+  const approach = doorRow + 1;
+  if (approach < WORLD_ROWS - BORDER) {
+    for (let c = doorCol - 1; c <= doorCol + 1; c++) {
+      if (c < BORDER || c >= WORLD_COLS - BORDER) continue;
+      grid[approach][c] = T.GROUND;
+    }
+  }
+
+  return { col, row, doorCol, doorRow };
+}
+
 /** Walkable cells scattered across the world, kept clear of the spawn pad. */
 export function pickEnemyCells(
   grid: TerrainId[][],
@@ -214,6 +268,26 @@ export function pickEnemyCells(
 }
 
 /**
+ * A plain enclosed room — floor with a one-tile wall ring. Interiors are
+ * hand-sized maps, so they skip the blob/ridge generation entirely.
+ */
+export function generateRoom(cols: number, rows: number): TerrainId[][] {
+  const grid: TerrainId[][] = [];
+
+  for (let row = 0; row < rows; row++) {
+    const line: TerrainId[] = [];
+    for (let col = 0; col < cols; col++) {
+      const isWall =
+        row === 0 || col === 0 || row === rows - 1 || col === cols - 1;
+      line.push(isWall ? T.ROCK : T.GROUND);
+    }
+    grid.push(line);
+  }
+
+  return grid;
+}
+
+/**
  * Collapse the grid into horizontal runs of identical terrain — far fewer rects
  * to hand to Skia than one per tile.
  */
@@ -227,11 +301,15 @@ export interface TerrainRun {
 
 export function buildTerrainRuns(grid: TerrainId[][]): TerrainRun[] {
   const runs: TerrainRun[] = [];
+  // Taken from the grid itself, not the world constants — interiors use this
+  // too and they're a different size.
+  const rows = grid.length;
+  const cols = grid[0].length;
 
-  for (let row = 0; row < WORLD_ROWS; row++) {
+  for (let row = 0; row < rows; row++) {
     let startCol = 0;
-    for (let col = 1; col <= WORLD_COLS; col++) {
-      const same = col < WORLD_COLS && grid[row][col] === grid[row][startCol];
+    for (let col = 1; col <= cols; col++) {
+      const same = col < cols && grid[row][col] === grid[row][startCol];
       if (same) continue;
       runs.push({
         terrain: grid[row][startCol],

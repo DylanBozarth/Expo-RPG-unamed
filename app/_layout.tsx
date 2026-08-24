@@ -15,6 +15,7 @@ export default function RootLayout() {
       <Stack screenOptions={headerOptions}>
         <Stack.Screen name="index" options={{ title: 'Home' }} />
         <Stack.Screen name="pages/map" options={{ headerShown: false }} />
+        <Stack.Screen name="pages/house" options={{ headerShown: false }} />
       </Stack>
     </GestureHandlerRootView>
   );
