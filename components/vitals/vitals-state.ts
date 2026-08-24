@@ -21,6 +21,18 @@ export const temperature = makeMutable(0);
 export const exhausted = makeMutable(false);
 
 /**
+ * A night's rest: stamina back to full, paid for with half the food and water
+ * on hand. Clears the exhausted latch too, otherwise the bar would read full
+ * while the player was still staggering at EXHAUSTED_SPEED.
+ */
+export function sleep() {
+  stamina.value = MAX_VITAL;
+  exhausted.value = false;
+  hunger.value = hunger.value / 2;
+  thirst.value = thirst.value / 2;
+}
+
+/**
  * Start-of-run state. Call this when beginning or restarting a run — NOT when
  * moving between maps, which is the whole point of the above living here.
  */

@@ -1,8 +1,12 @@
 import { Canvas, Circle, Group, Path, Rect, Skia } from "@shopify/react-native-skia";
 import { useCallback, useMemo, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
-import { GestureDetector } from "react-native-gesture-handler";
-import { useDerivedValue, type SharedValue } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import {
+  runOnJS,
+  useDerivedValue,
+  type SharedValue,
+} from "react-native-reanimated";
 import { Inventory } from "../inventory/inventory";
 import {
   T,
@@ -31,10 +35,20 @@ interface CameraOptions {
   worldHeight: number;
 }
 
+export interface Camera {
+  transform: ReturnType<typeof useDerivedValue<{ translateX: number }[]>>;
+  /** Camera offset in world px — add to a screen point to get a world point. */
+  camX: SharedValue<number>;
+  camY: SharedValue<number>;
+}
+
 /**
  * Follows the player, clamped to the world edges. When an axis of the world is
  * smaller than the viewport — which interiors usually are — that axis is
  * centred instead, so a small map doesn't sit pinned to the top-left corner.
+ *
+ * camX/camY are exposed separately so callers can map a tap back into world
+ * space, which the transform alone can't do.
  */
 export function useCamera({
   playerX,
@@ -47,13 +61,23 @@ export function useCamera({
   const maxCamX = worldWidth - width;
   const maxCamY = worldHeight - height;
 
-  return useDerivedValue(() => {
-    const camX =
-      maxCamX <= 0 ? maxCamX / 2 : Math.max(0, Math.min(maxCamX, playerX.value - width / 2));
-    const camY =
-      maxCamY <= 0 ? maxCamY / 2 : Math.max(0, Math.min(maxCamY, playerY.value - height / 2));
-    return [{ translateX: -camX }, { translateY: -camY }];
-  });
+  const camX = useDerivedValue(() =>
+    maxCamX <= 0
+      ? maxCamX / 2
+      : Math.max(0, Math.min(maxCamX, playerX.value - width / 2))
+  );
+  const camY = useDerivedValue(() =>
+    maxCamY <= 0
+      ? maxCamY / 2
+      : Math.max(0, Math.min(maxCamY, playerY.value - height / 2))
+  );
+
+  const transform = useDerivedValue(() => [
+    { translateX: -camX.value },
+    { translateY: -camY.value },
+  ]);
+
+  return { transform, camX, camY };
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +123,7 @@ interface SceneCanvasProps {
   runs: TerrainRun[];
   playerX: SharedValue<number>;
   playerY: SharedValue<number>;
-  transform: ReturnType<typeof useCamera>;
+  transform: ReturnType<typeof useCamera>["transform"];
   /** World-space Skia content, drawn over the terrain and under the player. */
   children?: ReactNode;
 }
@@ -143,12 +167,35 @@ export function SceneCanvas({
 
 interface SceneControlsProps {
   movement: MovementApi;
+  /**
+   * Tap position in canvas coordinates. Composed into the joystick's own
+   * detector rather than layered over it — a second full-screen detector on
+   * top would win hit-testing and swallow the joystick entirely.
+   */
+  onTap?: (x: number, y: number) => void;
   /** Extra screen-space UI, rendered above the controls. */
   children?: ReactNode;
 }
 
-export function SceneControls({ movement, children }: SceneControlsProps) {
+export function SceneControls({
+  movement,
+  onTap,
+  children,
+}: SceneControlsProps) {
   const { hunger, thirst } = movement;
+
+  const gesture = useMemo(() => {
+    if (!onTap) return movement.moveGesture;
+
+    const tap = Gesture.Tap()
+      .maxDuration(300)
+      .onEnd((e, success) => {
+        "worklet";
+        if (success) runOnJS(onTap)(e.x, e.y);
+      });
+
+    return Gesture.Simultaneous(movement.moveGesture, tap);
+  }, [movement.moveGesture, onTap]);
 
   // Consuming an item tops up the matching bar. Safe to write a shared value
   // from the JS thread — Reanimated forwards it to the UI thread.
@@ -162,7 +209,7 @@ export function SceneControls({ movement, children }: SceneControlsProps) {
 
   return (
     <>
-      <GestureDetector gesture={movement.moveGesture}>
+      <GestureDetector gesture={gesture}>
         <View style={StyleSheet.absoluteFill} pointerEvents="box-only">
           <Joystick knobStyle={movement.moveKnobStyle} />
         </View>

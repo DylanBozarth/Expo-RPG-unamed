@@ -1,6 +1,6 @@
 import { matchFont, Path, Rect, Skia, Text as SkiaText } from "@shopify/react-native-skia";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -29,6 +29,11 @@ import {
   type TerrainRun,
 } from "../../components/map/terrain";
 import { useMovement } from "../../components/movement/movement";
+import {
+  Door,
+  isTapOnDoor,
+  useDoorProximity,
+} from "../../components/scene/door";
 import { resetVitals } from "../../components/vitals/vitals-state";
 import {
   PLAYER_RADIUS,
@@ -45,8 +50,6 @@ const ENEMY_MIN_SPAWN_TILES = 8;
 
 const DOOR_WIDTH = TILE * 0.6;
 const DOOR_HEIGHT = TILE * 0.35;
-/** How close the player has to be to the doorway before entry is offered. */
-const DOOR_REACH = TILE * 1.4;
 
 const HOUSE_LABEL = "HOUSE";
 const houseFont = matchFont({ fontSize: 22, fontWeight: "700" });
@@ -127,8 +130,15 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
   const { enemies, runs, spawnX, spawnY, house } = world;
   const router = useRouter();
 
-  // Only true while the player stands in the doorway's reach
-  const [nearDoor, setNearDoor] = useState(false);
+  const doorRect = useMemo(
+    () => ({
+      x: house.doorX - DOOR_WIDTH / 2,
+      y: house.doorY - DOOR_HEIGHT,
+      width: DOOR_WIDTH,
+      height: DOOR_HEIGHT,
+    }),
+    [house]
+  );
 
   // The house is solid. Memoised because the frame callback closes over it.
   const obstacles = useMemo(
@@ -156,7 +166,7 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
 
   const gameOver = useSharedValue(false);
 
-  const cameraTransform = useCamera({
+  const camera = useCamera({
     playerX,
     playerY,
     width,
@@ -164,6 +174,20 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
     worldWidth: WORLD_W,
     worldHeight: WORLD_H,
   });
+
+  const nearDoor = useDoorProximity(playerX, playerY, doorRect);
+
+  // Tap arrives in canvas coords; shift by the camera to get world coords.
+  // Gated on proximity, so a tap on a distant door does nothing.
+  const handleTap = useCallback(
+    (x: number, y: number) => {
+      if (!nearDoor) return;
+      const worldX = x + camera.camX.value;
+      const worldY = y + camera.camY.value;
+      if (isTapOnDoor(worldX, worldY, doorRect)) router.push("/pages/house");
+    },
+    [nearDoor, camera, doorRect, router]
+  );
 
   // ---------------------------------------------------------------------------
   // Game loop — player vs enemy collision
@@ -187,19 +211,6 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
     () => gameOver.value,
     (hit) => {
       if (hit) runOnJS(onGameOver)();
-    }
-  );
-
-  // Doorway proximity — the comparison runs on the UI thread and only crosses
-  // to JS when the player actually enters or leaves the door's reach.
-  useAnimatedReaction(
-    () => {
-      const dx = playerX.value - house.doorX;
-      const dy = playerY.value - house.doorY;
-      return dx * dx + dy * dy < DOOR_REACH * DOOR_REACH;
-    },
-    (near, prev) => {
-      if (near !== prev) runOnJS(setNearDoor)(near);
     }
   );
 
@@ -233,7 +244,7 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
         runs={runs}
         playerX={playerX}
         playerY={playerY}
-        transform={cameraTransform}
+        transform={camera.transform}
       >
         {/* House — placeholder text plus an outline, so the door has a wall
             to sit on. Real geometry replaces this later. */}
@@ -261,28 +272,14 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
             color={Colors.alabaster}
           />
 
-          {/* Doorway on the bottom wall — lights up once within reach */}
-          <Rect
-            x={house.doorX - DOOR_WIDTH / 2}
-            y={house.doorY - DOOR_HEIGHT}
-            width={DOOR_WIDTH}
-            height={DOOR_HEIGHT}
-            color={nearDoor ? Colors.orange : "#2e1a10"}
-          />
+        {/* Doorway on the bottom wall — highlights and prompts once in reach.
+            Prompt sits below it, on the side the player approaches from. */}
+        <Door door={doorRect} active={nearDoor} promptSide="below" />
 
         <Path path={enemyPath} color="#e63946" />
       </SceneCanvas>
 
-      <SceneControls movement={movement}>
-        {nearDoor && (
-          <Pressable
-            style={styles.enterButton}
-            onPress={() => router.push("/pages/house")}
-          >
-            <Text style={styles.enterText}>ENTER HOUSE</Text>
-          </Pressable>
-        )}
-      </SceneControls>
+      <SceneControls movement={movement} onTap={handleTap} />
     </>
   );
 }
@@ -351,21 +348,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#050508",
-  },
-  enterButton: {
-    position: "absolute",
-    bottom: 140,
-    alignSelf: "center",
-    backgroundColor: Colors.orange,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-  },
-  enterText: {
-    color: Colors.black,
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.5,
   },
 });
 
