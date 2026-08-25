@@ -17,7 +17,8 @@ import {
 } from "../map/terrain";
 import { Joystick, type MovementApi } from "../movement/movement";
 import { MAX_VITAL, VitalsHud } from "../vitals/vitals";
-import type { ItemUse } from "../../store/inventory-store";
+import type { InventoryItem, ItemUse } from "../../store/inventory-store";
+import { useGroundStore, type SceneId } from "../../store/ground-store";
 import { Colors } from "../../styling/theme";
 
 export const PLAYER_RADIUS = 18;
@@ -222,6 +223,13 @@ interface SceneControlsProps {
    * top would win hit-testing and swallow the joystick entirely.
    */
   onTap?: (x: number, y: number) => void;
+  /**
+   * Which map this is, plus its camera. Both are needed to turn an item dragged
+   * out of the bag into a pile at a world point; without them the bag simply
+   * doesn't allow dragging out.
+   */
+  scene?: SceneId;
+  camera?: Pick<Camera, "camX" | "camY">;
   /** Extra screen-space UI, rendered above the controls. */
   children?: ReactNode;
 }
@@ -229,9 +237,12 @@ interface SceneControlsProps {
 export function SceneControls({
   movement,
   onTap,
+  scene,
+  camera,
   children,
 }: SceneControlsProps) {
   const { hunger, thirst } = movement;
+  const dropOnGround = useGroundStore((s) => s.drop);
 
   const gesture = useMemo(() => {
     if (!onTap) return movement.moveGesture;
@@ -256,6 +267,21 @@ export function SceneControls({
     [hunger, thirst]
   );
 
+  // Release point is in canvas coords, the same space as onTap — shift it by
+  // the camera to land the pile where the finger let go.
+  const handleDrop = useCallback(
+    (item: InventoryItem, screenX: number, screenY: number) => {
+      if (!scene || !camera) return;
+      dropOnGround(
+        scene,
+        item,
+        screenX + camera.camX.value,
+        screenY + camera.camY.value
+      );
+    },
+    [scene, camera, dropOnGround]
+  );
+
   return (
     <>
       <GestureDetector gesture={gesture}>
@@ -273,7 +299,10 @@ export function SceneControls({
 
       {/* After the GestureDetector so these win hit-testing — the joystick's
           absoluteFill would otherwise swallow the taps. */}
-      <Inventory onConsume={handleConsume} />
+      <Inventory
+        onConsume={handleConsume}
+        onDrop={scene && camera ? handleDrop : undefined}
+      />
       {children}
     </>
   );

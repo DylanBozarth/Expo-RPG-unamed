@@ -36,6 +36,10 @@ import {
   getWorld,
   type World,
 } from "../../components/map/world";
+import {
+  GroundItemLayer,
+  useNearestGroundItem,
+} from "../../components/ground/ground";
 import { useMovement } from "../../components/movement/movement";
 import {
   Interactable,
@@ -53,9 +57,13 @@ import {
   SceneControls,
   useCamera,
 } from "../../components/scene/scene";
+import { useGroundStore, type SceneId } from "../../store/ground-store";
 import { Colors } from "../../styling/theme";
 
 const ENEMY_RADIUS = 14;
+
+/** Identifies this map to the ground store — piles belong to one map only. */
+const SCENE: SceneId = "map";
 
 const DOOR_WIDTH = TILE * 0.6;
 const DOOR_HEIGHT = TILE * 0.35;
@@ -187,6 +195,13 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
 
   const [fishEaten, setFishEaten] = useState(false);
   const nearFish = useNearby(playerX, playerY, fish);
+
+  // Dropped items: the nearest pile in reach can be picked back up
+  const nearGroundKey = useNearestGroundItem(playerX, playerY, SCENE);
+  const pickUpGround = useGroundStore((s) => s.pickUp);
+  const pickUp = useCallback(() => {
+    if (nearGroundKey !== null) pickUpGround(nearGroundKey);
+  }, [nearGroundKey, pickUpGround]);
 
   const eatFish = useCallback(() => {
     eat(FISH_NUTRITION);
@@ -427,13 +442,26 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
         <Circle cx={npc.x} cy={npc.y} r={NPC_RADIUS} color={Colors.white} />
 
         <Path path={enemyPath} color="#e63946" />
+
+        {/* Dropped items, named in text until they have sprites */}
+        <GroundItemLayer scene={SCENE} nearKey={nearGroundKey} />
       </SceneCanvas>
 
-      <SceneControls movement={movement} onTap={handleTap}>
+      <SceneControls
+        movement={movement}
+        onTap={handleTap}
+        scene={SCENE}
+        camera={camera}
+      >
         {!talking && (
           <ActionBar>
             {nearNpc && !boarded && (
               <ActionButton label="SPEAK" onPress={startTalking} />
+            )}
+            {/* Offered afloat too, or anything dropped on the water would be
+                stranded there for good */}
+            {nearGroundKey !== null && (
+              <ActionButton label="PICK UP" onPress={pickUp} />
             )}
             {nearFish && !fishEaten && (
               <ActionButton label="EAT" onPress={eatFish} />

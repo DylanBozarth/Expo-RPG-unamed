@@ -35,9 +35,9 @@ export interface InventoryItem {
 // start from `emptySlots()` once items come from the world.
 const STARTER_ITEMS: InventoryItem[] = [
   {
-    id: "ration",
-    name: "Ration Pack",
-    short: "RTN",
+    id: "fruit",
+    name: "Fruit",
+    short: "Food",
     color: "#8bc34a",
     qty: 3,
     use: { vital: "hunger", amount: 35 },
@@ -50,8 +50,6 @@ const STARTER_ITEMS: InventoryItem[] = [
     qty: 2,
     use: { vital: "thirst", amount: 45 },
   },
-  { id: "cell", name: "Power Cell", short: "CEL", color: "#fca311", qty: 12 },
-  { id: "scrap", name: "Scrap Alloy", short: "SCR", color: "#3d3d4d", qty: 24 },
 ];
 
 function emptySlots(): (InventoryItem | null)[] {
@@ -88,8 +86,18 @@ interface InventoryState {
    */
   consumeItem: (index: number) => ItemUse | null;
 
-  /** Stacks onto a matching slot, else takes the first empty one. */
-  addItem: (item: InventoryItem) => boolean;
+  /**
+   * Stacks onto matching slots, then spills into empty ones. Returns the units
+   * that didn't fit, so the caller can leave the remainder where it came from.
+   */
+  addItem: (item: InventoryItem) => number;
+
+  /**
+   * Takes a whole stack out of the bag — dropping it on the ground. Returns the
+   * removed stack, or null if the slot was empty.
+   */
+  dropSlot: (index: number) => InventoryItem | null;
+
   removeItem: (index: number) => void;
   reset: () => void;
 }
@@ -180,7 +188,19 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     }
 
     set({ slots: next });
-    return remaining === 0; // false = inventory full, some was dropped
+    return remaining; // > 0 = bag full, this much never made it in
+  },
+
+  dropSlot: (index) => {
+    const { slots, selected } = get();
+    const item = slots[index];
+    if (!item) return null;
+
+    const next = [...slots];
+    next[index] = null;
+    set({ slots: next, selected: selected === index ? null : selected });
+
+    return item;
   },
 
   removeItem: (index) =>

@@ -28,8 +28,8 @@ import {
 } from "../vitals/vitals-state";
 
 const PLAYER_SPEED = 1.4;
-const JOYSTICK_BASE_RADIUS = 52;
-const JOYSTICK_KNOB_RADIUS = 22;
+const JOYSTICK_BASE_RADIUS = 40;
+const JOYSTICK_KNOB_RADIUS = 15;
 
 /** A solid, axis-aligned box in world px that the player can't walk into. */
 export interface Obstacle {

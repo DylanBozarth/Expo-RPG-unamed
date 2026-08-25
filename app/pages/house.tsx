@@ -3,6 +3,10 @@ import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { runOnJS, useAnimatedReaction } from "react-native-reanimated";
+import {
+  GroundItemLayer,
+  useNearestGroundItem,
+} from "../../components/ground/ground";
 import { buildTerrainRuns, generateRoom, TILE } from "../../components/map/terrain";
 import { useMovement } from "../../components/movement/movement";
 import {
@@ -19,7 +23,11 @@ import {
   useCamera,
 } from "../../components/scene/scene";
 import { sleep } from "../../components/vitals/vitals-state";
+import { useGroundStore, type SceneId } from "../../store/ground-store";
 import { Colors } from "../../styling/theme";
+
+/** Identifies this map to the ground store — piles belong to one map only. */
+const SCENE: SceneId = "house";
 
 const ROOM_COLS = 16;
 const ROOM_ROWS = 12;
@@ -85,6 +93,13 @@ export default function HouseScreen() {
 
   const nearExit = useNearby(playerX, playerY, EXIT_DOOR);
 
+  // Dropped items: the nearest pile in reach can be picked back up
+  const nearGroundKey = useNearestGroundItem(playerX, playerY, SCENE);
+  const pickUpGround = useGroundStore((s) => s.pickUp);
+  const pickUp = useCallback(() => {
+    if (nearGroundKey !== null) pickUpGround(nearGroundKey);
+  }, [nearGroundKey, pickUpGround]);
+
   // Tap arrives in canvas coords; shift by the camera to get world coords
   const handleTap = useCallback(
     (x: number, y: number) => {
@@ -132,11 +147,22 @@ export default function HouseScreen() {
 
         {/* Prompt above the door — below it is outside the room */}
         <Interactable rect={EXIT_DOOR} active={nearExit} promptSide="above" />
+
+        {/* Dropped items, named in text until they have sprites */}
+        <GroundItemLayer scene={SCENE} nearKey={nearGroundKey} />
       </SceneCanvas>
 
-      <SceneControls movement={movement} onTap={handleTap}>
+      <SceneControls
+        movement={movement}
+        onTap={handleTap}
+        scene={SCENE}
+        camera={camera}
+      >
         <ActionBar>
           {nearBed && <ActionButton label="SLEEP" onPress={sleep} />}
+          {nearGroundKey !== null && (
+            <ActionButton label="PICK UP" onPress={pickUp} />
+          )}
         </ActionBar>
       </SceneControls>
     </View>
