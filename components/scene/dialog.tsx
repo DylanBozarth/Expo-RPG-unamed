@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Colors } from "../../styling/theme";
 
@@ -5,6 +6,9 @@ interface DialogBoxProps {
   speaker: string;
   line: string;
   onClose: () => void;
+  /** Rendered under the line — stat readouts, reply buttons, whatever a given
+   * conversation needs. The box grows to fit it. */
+  children?: ReactNode;
 }
 
 /**
@@ -12,7 +16,7 @@ interface DialogBoxProps {
  * so the map stays visible behind it — movement is locked by the caller, not by
  * swallowing touches here.
  */
-export function DialogBox({ speaker, line, onClose }: DialogBoxProps) {
+export function DialogBox({ speaker, line, onClose, children }: DialogBoxProps) {
   return (
     <View style={styles.wrap}>
       <View style={styles.box}>
@@ -24,6 +28,8 @@ export function DialogBox({ speaker, line, onClose }: DialogBoxProps) {
         </View>
 
         <Text style={styles.line}>{line}</Text>
+
+        {children}
       </View>
     </View>
   );

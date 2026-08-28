@@ -47,6 +47,7 @@ import {
   useNearby,
 } from "../../components/scene/interactable";
 import { DialogBox } from "../../components/scene/dialog";
+import { StatSheet } from "../../components/character/stat-sheet";
 import { drink, eat, resetVitals } from "../../components/vitals/vitals-state";
 import { MAX_VITAL } from "../../components/vitals/vitals";
 import {
@@ -475,7 +476,11 @@ function GameContent({ width, height, world, onGameOver }: GameContentProps) {
       </SceneControls>
 
       {talking && (
-        <DialogBox speaker={NPC_NAME} line={NPC_LINE} onClose={stopTalking} />
+        <DialogBox speaker={NPC_NAME} line={NPC_LINE} onClose={stopTalking}>
+          {/* The stats are only shown here, in conversation — the HUD stays
+              clear the rest of the time */}
+          <StatSheet />
+        </DialogBox>
       )}
     </>
   );

@@ -14,6 +14,10 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <Stack screenOptions={headerOptions}>
         <Stack.Screen name="index" options={{ title: 'Home' }} />
+        <Stack.Screen
+          name="pages/character"
+          options={{ title: 'New Character' }}
+        />
         <Stack.Screen name="pages/map" options={{ headerShown: false }} />
         <Stack.Screen name="pages/house" options={{ headerShown: false }} />
       </Stack>
